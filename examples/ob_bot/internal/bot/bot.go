@@ -173,6 +173,7 @@ func (b *Bot) Stop() {
 // HandleOrderBooks - нужно вызвать асинхронно, будет писать в канал id инструментов, которые нужно купить или продать
 func (b *Bot) HandleOrderBooks(ctx context.Context, orderBooks chan OrderBook) (float64, error) {
 	var totalProfit float64
+	var totalSum float64
 	for {
 		select {
 		case <-ctx.Done():
@@ -181,21 +182,33 @@ func (b *Bot) HandleOrderBooks(ctx context.Context, orderBooks chan OrderBook) (
 			if !ok {
 				return totalProfit, nil
 			}
+			// Продаем, если уже купили и есть минимальный профит
+			profit, err := b.executor.Sell(ob.InstrumentUid)
+			if err != nil {
+				return totalProfit, err
+			}
+			if profit != 0 {
+				b.Client.Logger.Infof("profit = %.9f", profit)
+				totalProfit += profit
+			}
+			//  Если кол-во бид/аск больше чем BuyRatio - покупаем
 			ratio := b.checkRatio(ob)
 			if ratio > b.StrategyConfig.BuyRatio {
-				err := b.executor.Buy(ob.InstrumentUid)
+				totalAmount, err := b.executor.Buy(ob.InstrumentUid, totalSum)
 				if err != nil {
 					return totalProfit, err
 				}
-			} else if 1/ratio > b.StrategyConfig.SellRatio {
-				profit, err := b.executor.Sell(ob.InstrumentUid)
-				if err != nil {
-					return totalProfit, err
-				}
-				if profit > 0 {
-					b.Client.Logger.Infof("profit = %.9f", profit)
-					totalProfit += profit
-				}
+				totalSum += totalAmount
+				// } else if 1/ratio > b.StrategyConfig.SellRatio {
+				// 	profit, err := b.executor.Sell(ob.InstrumentUid)
+				// 	if err != nil {
+				// 		return totalProfit, err
+				// 	}
+				// 	if profit > 0 {
+				// 		b.Client.Logger.Infof("profit = %.9f", profit)
+				// 		totalProfit += profit
+				// 	}
+				// }
 			}
 		}
 	}

@@ -19,12 +19,34 @@ import (
 
 const (
 	// SHARES_NUM - Количество акций для торгов
-	SHARES_NUM = 30
-	// EXCHANGE - Биржа на которой будет работать бот
-	EXCHANGE = "MOEX"
+	SHARES_NUM = 100
+	// EXCHANGE - Биржа по расписанию которой которой будет работать бот, возможные варианты значения:
+	// MOEX:
+	// Торги на фондовом рынке с 09:50 до 18:50
+	// Аукцион открытия: 09:50 — 10:00
+	// Основная торговая сессия: 10:00 — 18:40
+	// Аукцион закрытия: 18:40 — 18:50
+	// MOEX_PLUS:
+	// Торги на фондовом рынке + вечерняя сессия
+	// Аукцион открытия: 09:50 — 10:00
+	// Основная торговая сессия: 10:00 — 18:40
+	// Аукцион закрытия: 18:40 — 18:50
+	// Аукцион открытия: 19:00 — 19:05
+	// Вечерняя торговая сессия: 19:05 — 23:50
+	// MOEX_WEEKEND:
+	// Торги на фондовом рынке + торговля на выходных
+	// Торги по рабочим дням по расписанию MOEX
+	// + Основная торговая сессия выходного дня: 10:00 — 19:00
+	// MOEX_EVENING_WEEKEND
+	// Торги на фондовом рынке + вечерняя сессия + торговля на выходных
+	// Торги по рабочим дням по расписанию MOEX_PLUS
+	// + Основная торговая сессия выходного дня: 10:00 — 19:00
+	EXCHANGE = "MOEX_EVENING_WEEKEND"
 	// CURRENCY - Бот на стакане торгует бумагами только в одной валюте. Отбор бумаг, проверка баланса, расчет профита
 	// делается в валюте CURRENCY.
 	CURRENCY = "RUB"
+	// QUAL_INVESTOR - значение true для квал. инвестора, false для неквал. инвестора
+	QUAL_INVESTOR = false
 )
 
 func main() {
@@ -88,8 +110,10 @@ func main() {
 		}
 		exchange := strings.EqualFold(share.GetExchange(), EXCHANGE)
 		currency := strings.EqualFold(share.GetCurrency(), CURRENCY)
-		if exchange && currency {
+		qualInvestor := share.GetForQualInvestorFlag()
+		if exchange && currency && !qualInvestor {
 			instrumentIds = append(instrumentIds, share.GetUid())
+			logger.Infof("append: %v %v %v", share.GetFigi(), share.GetName(), share.GetTicker())
 		}
 	}
 	logger.Infof("got %v instruments", len(instrumentIds))

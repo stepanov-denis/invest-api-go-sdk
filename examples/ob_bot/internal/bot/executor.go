@@ -11,6 +11,8 @@ import (
 	pb "github.com/russianinvestments/invest-api-go-sdk/proto"
 )
 
+const MAX_TOTAL_AMOUNT = 5000.00
+
 type Instrument struct {
 	// quantity - Количество лотов, которое покупает/продает исполнитель за 1 поручение
 	quantity int64
@@ -288,18 +290,22 @@ func (e *Executor) updatePositionsUnary() error {
 }
 
 // Buy - Метод покупки инструмента с идентификатором id
-func (e *Executor) Buy(id string) error {
+func (e *Executor) Buy(id string, totalSum float64) (float64, error) {
 	currentInstrument, ok := e.instruments[id]
 	if !ok {
-		return fmt.Errorf("instrument %v not found in executor map", id)
+		return 0, fmt.Errorf("instrument %v not found in executor map", id)
 	}
 	// если этот инструмент уже куплен ботом
 	if currentInstrument.inStock {
-		return nil
+		return 0, nil
 	}
 	// если не хватает средств для покупки
 	if !e.possibleToBuy(id) {
-		return nil
+		return 0, nil
+	}
+	// если сумма покупки > MAX_TOTAL_AMOUNT
+	if !e.possibleMaxTotalAmount(id) {
+		return 0, nil
 	}
 	resp, err := e.ordersService.Buy(&investgo.PostOrderRequestShort{
 		InstrumentId: id,
@@ -310,15 +316,19 @@ func (e *Executor) Buy(id string) error {
 		OrderId:      investgo.CreateUid(),
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if resp.GetExecutionReportStatus() == pb.OrderExecutionReportStatus_EXECUTION_REPORT_STATUS_FILL {
 		currentInstrument.inStock = true
 		currentInstrument.entryPrice = resp.GetExecutedOrderPrice().ToFloat()
 	}
 	e.instruments[id] = currentInstrument
-	e.client.Logger.Infof("Buy with %v, price %v", resp.GetFigi(), resp.GetExecutedOrderPrice().ToFloat())
-	return nil
+	figi := resp.GetFigi()
+	price := resp.GetExecutedOrderPrice().ToFloat()
+	totalAmount := resp.GetTotalOrderAmount().ToFloat()
+	totalSum += totalAmount
+	e.client.Logger.Infof("Buy with %v, price = %v, total amount = %v, total sum = %v", figi, price, totalAmount, totalSum)
+	return totalAmount, nil
 }
 
 // Sell - Метод покупки инструмента с идентификатором id
@@ -351,7 +361,10 @@ func (e *Executor) Sell(id string) (float64, error) {
 		// разница в цене инструмента * лотность * кол-во лотов
 		profit = (resp.GetExecutedOrderPrice().ToFloat() - currentInstrument.entryPrice) * float64(currentInstrument.lot) * float64(currentInstrument.quantity)
 	}
-	e.client.Logger.Infof("Sell with %v, price %v", resp.GetFigi(), resp.GetExecutedOrderPrice().ToFloat())
+	figi := resp.GetFigi()
+	price := resp.GetExecutedOrderPrice().ToFloat()
+	totalAmount := resp.GetTotalOrderAmount().ToFloat()
+	e.client.Logger.Infof("Sell %v, price = %v, total amount = %v", figi, price, totalAmount)
 	e.instruments[id] = currentInstrument
 	return profit, nil
 }
@@ -392,6 +405,20 @@ func (e *Executor) possibleToBuy(id string) bool {
 		e.client.Logger.Infof("executor: not enough money to buy order with id = %v", id)
 	}
 	return moneyInFloat > required
+}
+
+// possibleMaxTotalAmount - проверяем, что сумма покупки <= MAX_TOTAL_AMOUNT
+func (e *Executor) possibleMaxTotalAmount(id string) bool {
+	// текущая стоимость покупки
+	// кол-во лотов * лотность * стоимость 1 инструмента
+	//return true
+	lp, ok := e.lastPrices.Get(id)
+	if !ok {
+		e.client.Logger.Infof("e.lastPrices.Get(id) error")
+		return false
+	}
+	totalAmount := float64(e.instruments[id].quantity) * float64(e.instruments[id].lot) * lp
+	return totalAmount <= MAX_TOTAL_AMOUNT
 }
 
 // SellOut - Метод выхода из всех ценно-бумажных позиций
