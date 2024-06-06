@@ -24,6 +24,8 @@ type Instrument struct {
 	inStock bool
 	// entryPrice - После открытия позиции, сохраняется цена этой сделки
 	entryPrice float64
+	// entryComission - После открытия позиции, сохраняется комиссия этой сделки
+	entryComission float64
 }
 
 // LastPrices - Последние цены инструментов
@@ -290,7 +292,7 @@ func (e *Executor) updatePositionsUnary() error {
 }
 
 // Buy - Метод покупки инструмента с идентификатором id
-func (e *Executor) Buy(id string, totalSum float64) (float64, error) {
+func (e *Executor) Buy(id string) (float64, error) {
 	currentInstrument, ok := e.instruments[id]
 	if !ok {
 		return 0, fmt.Errorf("instrument %v not found in executor map", id)
@@ -321,14 +323,15 @@ func (e *Executor) Buy(id string, totalSum float64) (float64, error) {
 	if resp.GetExecutionReportStatus() == pb.OrderExecutionReportStatus_EXECUTION_REPORT_STATUS_FILL {
 		currentInstrument.inStock = true
 		currentInstrument.entryPrice = resp.GetExecutedOrderPrice().ToFloat()
+		currentInstrument.entryComission = resp.GetExecutedCommission().ToFloat()
 	}
 	e.instruments[id] = currentInstrument
 	figi := resp.GetFigi()
 	price := resp.GetExecutedOrderPrice().ToFloat()
-	totalAmount := resp.GetTotalOrderAmount().ToFloat()
-	totalSum += totalAmount
-	e.client.Logger.Infof("Buy with %v, price = %v, total amount = %v, total sum = %v", figi, price, totalAmount, totalSum)
-	return totalAmount, nil
+	orderAmount := resp.GetTotalOrderAmount().ToFloat()
+	comission := resp.GetExecutedCommission().ToFloat()
+	e.client.Logger.Infof("Buy with %v, price = %.4f, order amount = %.4f, comission = %.4f", figi, price, orderAmount, comission)
+	return orderAmount, nil
 }
 
 // Sell - Метод покупки инструмента с идентификатором id
@@ -355,18 +358,20 @@ func (e *Executor) Sell(id string) (float64, float64, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	var profit float64
+	var grossProfit float64
 	if resp.GetExecutionReportStatus() == pb.OrderExecutionReportStatus_EXECUTION_REPORT_STATUS_FILL {
 		currentInstrument.inStock = false
 		// разница в цене инструмента * лотность * кол-во лотов
-		profit = (resp.GetExecutedOrderPrice().ToFloat() - currentInstrument.entryPrice) * float64(currentInstrument.lot) * float64(currentInstrument.quantity)
+		grossProfit = (resp.GetExecutedOrderPrice().ToFloat() - currentInstrument.entryPrice) * float64(currentInstrument.lot) * float64(currentInstrument.quantity)
 	}
 	figi := resp.GetFigi()
 	price := resp.GetExecutedOrderPrice().ToFloat()
-	totalAmount := resp.GetTotalOrderAmount().ToFloat()
-	e.client.Logger.Infof("Sell %v, price = %v, total amount = %v", figi, price, totalAmount)
+	orderAmount := resp.GetTotalOrderAmount().ToFloat()
+	comission := resp.GetExecutedCommission().ToFloat()
+	profit := grossProfit - comission - currentInstrument.entryComission
+	e.client.Logger.Infof("Sell %v, price = %.4f, order amount = %.4f, comission = %.4f", figi, price, orderAmount, comission)
 	e.instruments[id] = currentInstrument
-	return profit, totalAmount, nil
+	return profit, orderAmount, nil
 }
 
 // isProfitable - Верно если процент выгоды возможной сделки, рассчитанный по цене последней сделки, больше чем minProfit
@@ -422,13 +427,14 @@ func (e *Executor) possibleMaxTotalAmount(id string) bool {
 }
 
 // SellOut - Метод выхода из всех ценно-бумажных позиций
-func (e *Executor) SellOut() (float64, error) {
+func (e *Executor) SellOut() (float64, float64, error) {
 	resp, err := e.operationsService.GetPositions(e.client.Config.AccountId)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	var sellOutProfit float64
+	var sellOutAmount float64
 	securities := resp.GetSecurities()
 	for _, security := range securities {
 		var lot int64
@@ -452,7 +458,7 @@ func (e *Executor) SellOut() (float64, error) {
 			})
 			if err != nil {
 				e.client.Logger.Errorf(investgo.MessageFromHeader(resp.GetHeader()))
-				return 0, err
+				return 0, 0, err
 			}
 		} else {
 			resp, err := e.ordersService.Sell(&investgo.PostOrderRequestShort{
@@ -465,15 +471,18 @@ func (e *Executor) SellOut() (float64, error) {
 			})
 			if err != nil {
 				e.client.Logger.Errorf(investgo.MessageFromHeader(resp.GetHeader()))
-				return 0, err
+				return 0, 0, err
 			}
 			if resp.GetExecutionReportStatus() == pb.OrderExecutionReportStatus_EXECUTION_REPORT_STATUS_FILL {
 				instrument.inStock = false
 				// разница в цене инструмента * лотность * кол-во лотов
-				sellOutProfit += (resp.GetExecutedOrderPrice().ToFloat() - instrument.entryPrice) * float64(instrument.lot) * float64(instrument.quantity)
+				grossProfit := (resp.GetExecutedOrderPrice().ToFloat() - instrument.entryPrice) * float64(instrument.lot) * float64(instrument.quantity)
+				profit := grossProfit - resp.GetExecutedCommission().ToFloat() - instrument.entryComission
+				sellOutProfit += profit
+				sellOutAmount += resp.GetTotalOrderAmount().ToFloat()
 			}
 			e.instruments[security.GetInstrumentUid()] = instrument
 		}
 	}
-	return sellOutProfit, nil
+	return sellOutProfit, sellOutAmount, nil
 }

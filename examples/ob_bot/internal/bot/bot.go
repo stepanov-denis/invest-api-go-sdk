@@ -128,11 +128,11 @@ func (b *Bot) Run() error {
 
 	// данные готовы, далее идет принятие решения и возможное выставление торгового поручения
 	var strategyProfit float64
-	var strategySum float64
+	var strategyAmount float64
 	wg.Add(1)
 	go func(ctx context.Context) {
 		defer wg.Done()
-		strategyProfit, strategySum, err = b.HandleOrderBooks(ctx, orderBooks)
+		strategyProfit, strategyAmount, err = b.HandleOrderBooks(ctx, orderBooks)
 		if err != nil {
 			b.Client.Logger.Errorf(err.Error())
 		}
@@ -149,17 +149,19 @@ func (b *Bot) Run() error {
 	// после этого отдельно завершаем работу исполнителя
 	// если нужно, то в конце торговой сессии выходим из всех, открытых ботом, позиций
 	var sellOutProfit float64
+	var sellOutAmount float64
 	if b.StrategyConfig.SellOut {
 		b.Client.Logger.Infof("start positions sell out...")
-		sellOutProfit, err = b.executor.SellOut()
+		sellOutProfit, sellOutAmount, err = b.executor.SellOut()
 		if err != nil {
 			return err
 		}
 	}
-	b.Client.Logger.Infof("profit by strategy = %.9f", strategyProfit)
-	b.Client.Logger.Infof("profit by sell out = %.9f", sellOutProfit)
-	b.Client.Logger.Infof("total profit = %.9f", sellOutProfit+strategyProfit)
-	b.Client.Logger.Infof("total sum = %.9f", strategySum)
+	b.Client.Logger.Infof("profit by strategy = %.4f", strategyProfit)
+	b.Client.Logger.Infof("profit by sell out = %.4f", sellOutProfit)
+	b.Client.Logger.Infof("sell out amount = %.4f", sellOutAmount)
+	b.Client.Logger.Infof("total profit = %.4f", sellOutProfit+strategyProfit)
+	b.Client.Logger.Infof("strategy amount = %.4f", strategyAmount-sellOutAmount)
 
 	// так как исполнитель тоже слушает стримы, его нужно явно остановить
 	b.executor.Stop()
@@ -175,33 +177,37 @@ func (b *Bot) Stop() {
 // HandleOrderBooks - нужно вызвать асинхронно, будет писать в канал id инструментов, которые нужно купить или продать
 func (b *Bot) HandleOrderBooks(ctx context.Context, orderBooks chan OrderBook) (float64, float64, error) {
 	var totalProfit float64
-	var totalSum float64
+	var totalAmount float64
 	for {
 		select {
 		case <-ctx.Done():
-			return totalProfit, 0, nil
+			return totalProfit, totalAmount, nil
 		case ob, ok := <-orderBooks:
 			if !ok {
-				return totalProfit, 0, nil
+				return totalProfit, totalAmount, nil
 			}
 			// Продаем, если уже купили и есть минимальный профит
-			profit, sum, err := b.executor.Sell(ob.InstrumentUid)
+			profit, orderAmount, err := b.executor.Sell(ob.InstrumentUid)
 			if err != nil {
-				return totalProfit, totalSum, err
+				return totalProfit, totalAmount, err
 			}
 			if profit != 0 {
-				b.Client.Logger.Infof("profit = %.9f", profit)
 				totalProfit += profit
-				totalSum -= sum
+				totalAmount -= orderAmount
+				b.Client.Logger.Infof("profit = %.4f, total profit = %.4f", profit, totalProfit)
+				b.Client.Logger.Infof("total amount = %.4f", totalAmount)
 			}
 			//  Если кол-во бид/аск больше чем BuyRatio - покупаем
 			ratio := b.checkRatio(ob)
 			if ratio > b.StrategyConfig.BuyRatio {
-				totalAmount, err := b.executor.Buy(ob.InstrumentUid, totalSum)
+				orderAmount, err := b.executor.Buy(ob.InstrumentUid)
 				if err != nil {
-					return totalProfit, 0, err
+					return totalProfit, totalAmount, err
 				}
-				totalSum += totalAmount
+				if orderAmount != 0 {
+					totalAmount += orderAmount
+					b.Client.Logger.Infof("total amount = %.4f", totalAmount)
+				}
 				// } else if 1/ratio > b.StrategyConfig.SellRatio {
 				// 	profit, err := b.executor.Sell(ob.InstrumentUid)
 				// 	if err != nil {
