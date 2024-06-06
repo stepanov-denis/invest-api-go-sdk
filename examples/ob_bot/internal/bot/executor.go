@@ -332,16 +332,16 @@ func (e *Executor) Buy(id string, totalSum float64) (float64, error) {
 }
 
 // Sell - Метод покупки инструмента с идентификатором id
-func (e *Executor) Sell(id string) (float64, error) {
+func (e *Executor) Sell(id string) (float64, float64, error) {
 	currentInstrument, ok := e.instruments[id]
 	if !ok {
-		return 0, fmt.Errorf("instrument %v not found in executor map", id)
+		return 0, 0, fmt.Errorf("instrument %v not found in executor map", id)
 	}
 	if !currentInstrument.inStock {
-		return 0, nil
+		return 0, 0, nil
 	}
 	if profitable := e.isProfitable(id); !profitable {
-		return 0, nil
+		return 0, 0, nil
 	}
 
 	resp, err := e.ordersService.Sell(&investgo.PostOrderRequestShort{
@@ -353,7 +353,7 @@ func (e *Executor) Sell(id string) (float64, error) {
 		OrderId:      investgo.CreateUid(),
 	})
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	var profit float64
 	if resp.GetExecutionReportStatus() == pb.OrderExecutionReportStatus_EXECUTION_REPORT_STATUS_FILL {
@@ -366,7 +366,7 @@ func (e *Executor) Sell(id string) (float64, error) {
 	totalAmount := resp.GetTotalOrderAmount().ToFloat()
 	e.client.Logger.Infof("Sell %v, price = %v, total amount = %v", figi, price, totalAmount)
 	e.instruments[id] = currentInstrument
-	return profit, nil
+	return profit, totalAmount, nil
 }
 
 // isProfitable - Верно если процент выгоды возможной сделки, рассчитанный по цене последней сделки, больше чем minProfit

@@ -128,10 +128,11 @@ func (b *Bot) Run() error {
 
 	// данные готовы, далее идет принятие решения и возможное выставление торгового поручения
 	var strategyProfit float64
+	var strategySum float64
 	wg.Add(1)
 	go func(ctx context.Context) {
 		defer wg.Done()
-		strategyProfit, err = b.HandleOrderBooks(ctx, orderBooks)
+		strategyProfit, strategySum, err = b.HandleOrderBooks(ctx, orderBooks)
 		if err != nil {
 			b.Client.Logger.Errorf(err.Error())
 		}
@@ -158,6 +159,7 @@ func (b *Bot) Run() error {
 	b.Client.Logger.Infof("profit by strategy = %.9f", strategyProfit)
 	b.Client.Logger.Infof("profit by sell out = %.9f", sellOutProfit)
 	b.Client.Logger.Infof("total profit = %.9f", sellOutProfit+strategyProfit)
+	b.Client.Logger.Infof("total sum = %.9f", strategySum)
 
 	// так как исполнитель тоже слушает стримы, его нужно явно остановить
 	b.executor.Stop()
@@ -171,32 +173,33 @@ func (b *Bot) Stop() {
 }
 
 // HandleOrderBooks - нужно вызвать асинхронно, будет писать в канал id инструментов, которые нужно купить или продать
-func (b *Bot) HandleOrderBooks(ctx context.Context, orderBooks chan OrderBook) (float64, error) {
+func (b *Bot) HandleOrderBooks(ctx context.Context, orderBooks chan OrderBook) (float64, float64, error) {
 	var totalProfit float64
 	var totalSum float64
 	for {
 		select {
 		case <-ctx.Done():
-			return totalProfit, nil
+			return totalProfit, 0, nil
 		case ob, ok := <-orderBooks:
 			if !ok {
-				return totalProfit, nil
+				return totalProfit, 0, nil
 			}
 			// Продаем, если уже купили и есть минимальный профит
-			profit, err := b.executor.Sell(ob.InstrumentUid)
+			profit, sum, err := b.executor.Sell(ob.InstrumentUid)
 			if err != nil {
-				return totalProfit, err
+				return totalProfit, totalSum, err
 			}
 			if profit != 0 {
 				b.Client.Logger.Infof("profit = %.9f", profit)
 				totalProfit += profit
+				totalSum -= sum
 			}
 			//  Если кол-во бид/аск больше чем BuyRatio - покупаем
 			ratio := b.checkRatio(ob)
 			if ratio > b.StrategyConfig.BuyRatio {
 				totalAmount, err := b.executor.Buy(ob.InstrumentUid, totalSum)
 				if err != nil {
-					return totalProfit, err
+					return totalProfit, 0, err
 				}
 				totalSum += totalAmount
 				// } else if 1/ratio > b.StrategyConfig.SellRatio {
