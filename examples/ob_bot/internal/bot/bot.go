@@ -31,6 +31,8 @@ type OrderBookStrategyConfig struct {
 	SellRatio float64
 	// MinProfit - Минимальный процент выгоды, с которым можно совершать сделки
 	MinProfit float64
+	// StopLoss - стоп-лосс в процентах со знаком
+	StopLoss float64
 	// SellOut - Если true, то по достижению дедлайна бот выходит из всех активных позиций
 	SellOut bool
 }
@@ -73,7 +75,7 @@ func NewBot(ctx context.Context, c *investgo.Client, config OrderBookStrategyCon
 		StrategyConfig: config,
 		ctx:            botCtx,
 		cancelBot:      cancelBot,
-		executor:       NewExecutor(ctx, c, instruments, config.MinProfit),
+		executor:       NewExecutor(ctx, c, instruments, config.MinProfit, config.StopLoss),
 	}, nil
 }
 

@@ -11,10 +11,7 @@ import (
 	pb "github.com/russianinvestments/invest-api-go-sdk/proto"
 )
 
-const (
-	MAX_ORDER_AMOUNT = 1000.00
-	STOP_LOSS        = -10.00
-)
+const MAX_ORDER_AMOUNT = 1000.00
 
 type Instrument struct {
 	// quantity - Количество лотов, которое покупает/продает исполнитель за 1 поручение
@@ -91,6 +88,9 @@ type Executor struct {
 	// minProfit - Процент минимального профита, после которого выставляются рыночные заявки
 	minProfit float64
 
+	// StopLoss - стоп-лосс в процентах со знаком
+	stopLoss float64
+
 	// lastPrices - Последние цены по инструментам, обновляются через стрим маркетдаты
 	lastPrices *LastPrices
 	// lastPrices - Текущие позиции на счете, обновляются через стрим сервиса операций
@@ -105,13 +105,14 @@ type Executor struct {
 }
 
 // NewExecutor - Создание экземпляра исполнителя
-func NewExecutor(ctx context.Context, c *investgo.Client, ids map[string]Instrument, minProfit float64) *Executor {
+func NewExecutor(ctx context.Context, c *investgo.Client, ids map[string]Instrument, minProfit float64, stopLoss float64) *Executor {
 	ctxExecutor, cancel := context.WithCancel(ctx)
 	wg := &sync.WaitGroup{}
 
 	e := &Executor{
 		instruments:       ids,
 		minProfit:         minProfit,
+		stopLoss:          stopLoss,
 		lastPrices:        NewLastPrices(),
 		positions:         NewPositions(),
 		wg:                wg,
@@ -397,11 +398,7 @@ func (e *Executor) isStopLoss(id string) bool {
 	if !ok {
 		return false
 	}
-	profit := -11
-	stopLoss := -10
-	result := profit < stopLoss
-	e.client.Logger.Infof("profit = %.4f, stop loss = %.4f, result = %v", profit, stopLoss, result)
-	return ((lp-e.instruments[id].entryPrice)/e.instruments[id].entryPrice)*100 < STOP_LOSS
+	return ((lp-e.instruments[id].entryPrice)/e.instruments[id].entryPrice)*100 < e.stopLoss
 }
 
 // possibleToBuy - Проверка возможности купить инструмент

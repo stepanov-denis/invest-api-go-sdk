@@ -132,6 +132,7 @@ func main() {
 		BuyRatio:             2,
 		SellRatio:            2,
 		MinProfit:            0.5,
+		StopLoss:             -10,
 		SellOut:              true,
 	}
 
