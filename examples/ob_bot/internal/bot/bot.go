@@ -159,9 +159,9 @@ func (b *Bot) Run() error {
 	}
 	b.Client.Logger.Infof("profit by strategy = %.4f", strategyProfit)
 	b.Client.Logger.Infof("profit by sell out = %.4f", sellOutProfit)
+	b.Client.Logger.Infof("strategy amount = %.4f", strategyAmount)
 	b.Client.Logger.Infof("sell out amount = %.4f", sellOutAmount)
 	b.Client.Logger.Infof("total profit = %.4f", sellOutProfit+strategyProfit)
-	b.Client.Logger.Infof("strategy amount = %.4f", strategyAmount-sellOutAmount)
 
 	// так как исполнитель тоже слушает стримы, его нужно явно остановить
 	b.executor.Stop()

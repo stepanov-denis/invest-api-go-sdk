@@ -11,7 +11,10 @@ import (
 	pb "github.com/russianinvestments/invest-api-go-sdk/proto"
 )
 
-const MAX_TOTAL_AMOUNT = 5000.00
+const (
+	MAX_ORDER_AMOUNT = 1000.00
+	STOP_LOSS        = -10.00
+)
 
 type Instrument struct {
 	// quantity - Количество лотов, которое покупает/продает исполнитель за 1 поручение
@@ -344,7 +347,11 @@ func (e *Executor) Sell(id string) (float64, float64, error) {
 		return 0, 0, nil
 	}
 	if profitable := e.isProfitable(id); !profitable {
-		return 0, 0, nil
+		if stopLoss := e.isStopLoss(id); stopLoss {
+			e.client.Logger.Infof("stop loss = %v => Sell", stopLoss)
+		} else {
+			return 0, 0, nil
+		}
 	}
 
 	resp, err := e.ordersService.Sell(&investgo.PostOrderRequestShort{
@@ -381,6 +388,20 @@ func (e *Executor) isProfitable(id string) bool {
 		return false
 	}
 	return ((lp-e.instruments[id].entryPrice)/e.instruments[id].entryPrice)*100 > e.minProfit
+}
+
+// isStopLoss - Верно, если процент убытка возможной сделки,
+// рассчитанный по цене последней сделки, больше, чем установленный в STOP_LOSS
+func (e *Executor) isStopLoss(id string) bool {
+	lp, ok := e.lastPrices.Get(id)
+	if !ok {
+		return false
+	}
+	profit := -11
+	stopLoss := -10
+	result := profit < stopLoss
+	e.client.Logger.Infof("profit = %.4f, stop loss = %.4f, result = %v", profit, stopLoss, result)
+	return ((lp-e.instruments[id].entryPrice)/e.instruments[id].entryPrice)*100 < STOP_LOSS
 }
 
 // possibleToBuy - Проверка возможности купить инструмент
@@ -423,7 +444,7 @@ func (e *Executor) possibleMaxTotalAmount(id string) bool {
 		return false
 	}
 	totalAmount := float64(e.instruments[id].quantity) * float64(e.instruments[id].lot) * lp
-	return totalAmount <= MAX_TOTAL_AMOUNT
+	return totalAmount <= MAX_ORDER_AMOUNT
 }
 
 // SellOut - Метод выхода из всех ценно-бумажных позиций

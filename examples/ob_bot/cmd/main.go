@@ -42,6 +42,8 @@ const (
 	// Торги по рабочим дням по расписанию MOEX_PLUS
 	// + Основная торговая сессия выходного дня: 10:00 — 19:00
 	EXCHANGE = "MOEX_EVENING_WEEKEND"
+	// EXCHANGE_SCHEDULE - расписание, по которому торгует бот
+	EXCHANGE_SCHEDULE = "MOEX_EVENING_WEEKEND"
 	// CURRENCY - Бот на стакане торгует бумагами только в одной валюте. Отбор бумаг, проверка баланса, расчет профита
 	// делается в валюте CURRENCY.
 	CURRENCY = "RUB"
@@ -143,7 +145,7 @@ func main() {
 	// Таймер для Московской биржи, отслеживает расписание и дает сигналы, на остановку/запуск бота
 	// cancelAhead - Событие STOP будет отправлено в канал за cancelAhead до конца торгов
 	cancelAhead := time.Minute * 5
-	t := investgo.NewTimer(client, EXCHANGE, cancelAhead)
+	t := investgo.NewTimer(client, EXCHANGE_SCHEDULE, cancelAhead)
 
 	// запуск таймера
 	wg.Add(1)
