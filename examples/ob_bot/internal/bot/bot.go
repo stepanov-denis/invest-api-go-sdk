@@ -188,20 +188,22 @@ func (b *Bot) HandleOrderBooks(ctx context.Context, orderBooks chan OrderBook) (
 			if !ok {
 				return totalProfit, totalAmount, nil
 			}
-			// Продаем, если уже купили и есть минимальный профит
-			profit, orderAmount, err := b.executor.Sell(ob.InstrumentUid)
-			if err != nil {
-				return totalProfit, totalAmount, err
-			}
-			if profit != 0 {
-				totalProfit += profit
-				totalAmount -= orderAmount
-				b.Client.Logger.Infof("profit = %.4f, total profit = %.4f", profit, totalProfit)
-				b.Client.Logger.Infof("total amount = %.4f", totalAmount)
-			}
-			//  Если кол-во бид/аск больше чем BuyRatio - покупаем
+			inStock := b.executor.instruments[ob.InstrumentUid].inStock
 			ratio := b.checkRatio(ob)
-			if ratio > b.StrategyConfig.BuyRatio {
+			if inStock {
+				// Продаем, если уже купили и есть минимальный профит
+				profit, orderAmount, err := b.executor.Sell(ob.InstrumentUid)
+				if err != nil {
+					return totalProfit, totalAmount, err
+				}
+				if profit != 0 {
+					totalProfit += profit
+					totalAmount -= orderAmount
+					b.Client.Logger.Infof("profit = %.4f, total profit = %.4f", profit, totalProfit)
+					b.Client.Logger.Infof("total amount = %.4f", totalAmount)
+				}
+			} else if ratio > b.StrategyConfig.BuyRatio {
+				//  Если кол-во бид/аск больше чем BuyRatio - покупаем
 				orderAmount, err := b.executor.Buy(ob.InstrumentUid)
 				if err != nil {
 					return totalProfit, totalAmount, err
@@ -210,17 +212,17 @@ func (b *Bot) HandleOrderBooks(ctx context.Context, orderBooks chan OrderBook) (
 					totalAmount += orderAmount
 					b.Client.Logger.Infof("total amount = %.4f", totalAmount)
 				}
-				// } else if 1/ratio > b.StrategyConfig.SellRatio {
-				// 	profit, err := b.executor.Sell(ob.InstrumentUid)
-				// 	if err != nil {
-				// 		return totalProfit, err
-				// 	}
-				// 	if profit > 0 {
-				// 		b.Client.Logger.Infof("profit = %.9f", profit)
-				// 		totalProfit += profit
-				// 	}
-				// }
 			}
+			// } else if 1/ratio > b.StrategyConfig.SellRatio {
+			// 	profit, err := b.executor.Sell(ob.InstrumentUid)
+			// 	if err != nil {
+			// 		return totalProfit, err
+			// 	}
+			// 	if profit > 0 {
+			// 		b.Client.Logger.Infof("profit = %.9f", profit)
+			// 		totalProfit += profit
+			// 	}
+			// }
 		}
 	}
 }
