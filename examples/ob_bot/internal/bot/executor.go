@@ -349,7 +349,7 @@ func (e *Executor) Sell(id string) (float64, float64, error) {
 	}
 	if profitable := e.isProfitable(id); !profitable {
 		if stopLoss := e.isStopLoss(id); stopLoss {
-			e.client.Logger.Infof("stop loss = %v => Sell", stopLoss)
+			e.client.Logger.Infof("stop loss = %.4f => Sell", e.stopLoss)
 		} else {
 			return 0, 0, nil
 		}
