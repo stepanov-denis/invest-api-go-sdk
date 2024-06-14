@@ -43,7 +43,7 @@ const (
 	// + Основная торговая сессия выходного дня: 10:00 — 19:00
 	EXCHANGE = "MOEX_EVENING_WEEKEND"
 	// EXCHANGE_SCHEDULE - расписание, по которому торгует бот
-	EXCHANGE_SCHEDULE = "MOEX"
+	EXCHANGE_SCHEDULE = "MOEX_EVENING_WEEKEND"
 	// CURRENCY - Бот на стакане торгует бумагами только в одной валюте. Отбор бумаг, проверка баланса, расчет профита
 	// делается в валюте CURRENCY.
 	CURRENCY = "RUB"
@@ -133,6 +133,7 @@ func main() {
 		SellRatio:            2,
 		MinProfit:            0.2,
 		StopLoss:             -10,
+		Comission:            0.05,
 		SellOut:              true,
 	}
 

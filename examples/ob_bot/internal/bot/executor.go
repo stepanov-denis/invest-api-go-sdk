@@ -91,6 +91,9 @@ type Executor struct {
 	// StopLoss - стоп-лосс в процентах со знаком
 	stopLoss float64
 
+	// comission - размер комиссии в процентах
+	comission float64
+
 	// lastPrices - Последние цены по инструментам, обновляются через стрим маркетдаты
 	lastPrices *LastPrices
 	// lastPrices - Текущие позиции на счете, обновляются через стрим сервиса операций
@@ -105,7 +108,7 @@ type Executor struct {
 }
 
 // NewExecutor - Создание экземпляра исполнителя
-func NewExecutor(ctx context.Context, c *investgo.Client, ids map[string]Instrument, minProfit float64, stopLoss float64) *Executor {
+func NewExecutor(ctx context.Context, c *investgo.Client, ids map[string]Instrument, minProfit float64, stopLoss float64, comission float64) *Executor {
 	ctxExecutor, cancel := context.WithCancel(ctx)
 	wg := &sync.WaitGroup{}
 
@@ -113,6 +116,7 @@ func NewExecutor(ctx context.Context, c *investgo.Client, ids map[string]Instrum
 		instruments:       ids,
 		minProfit:         minProfit,
 		stopLoss:          stopLoss,
+		comission:         comission,
 		lastPrices:        NewLastPrices(),
 		positions:         NewPositions(),
 		wg:                wg,
@@ -327,13 +331,13 @@ func (e *Executor) Buy(id string) (float64, error) {
 	if resp.GetExecutionReportStatus() == pb.OrderExecutionReportStatus_EXECUTION_REPORT_STATUS_FILL {
 		currentInstrument.inStock = true
 		currentInstrument.entryPrice = resp.GetExecutedOrderPrice().ToFloat()
-		currentInstrument.entryComission = resp.GetTotalOrderAmount().ToFloat() / 100 * 0.05
+		currentInstrument.entryComission = resp.GetTotalOrderAmount().ToFloat() / 100 * e.comission
 	}
 	e.instruments[id] = currentInstrument
 	figi := resp.GetFigi()
 	price := resp.GetExecutedOrderPrice().ToFloat()
 	orderAmount := resp.GetTotalOrderAmount().ToFloat()
-	comission := orderAmount / 100 * 0.05
+	comission := orderAmount / 100 * e.comission
 	e.client.Logger.Infof("Buy with %v, price = %.4f, order amount = %.4f, comission = %.4f", figi, price, orderAmount, comission)
 	return orderAmount, nil
 }
@@ -375,7 +379,7 @@ func (e *Executor) Sell(id string) (float64, float64, error) {
 	figi := resp.GetFigi()
 	price := resp.GetExecutedOrderPrice().ToFloat()
 	orderAmount := resp.GetTotalOrderAmount().ToFloat()
-	comission := orderAmount / 100 * 0.05
+	comission := orderAmount / 100 * e.comission
 	profit := grossProfit - comission - currentInstrument.entryComission
 	e.client.Logger.Infof("Sell %v, price = %.4f, order amount = %.4f, comission = %.4f", figi, price, orderAmount, comission)
 	e.instruments[id] = currentInstrument
@@ -495,7 +499,7 @@ func (e *Executor) SellOut() (float64, float64, error) {
 				instrument.inStock = false
 				// разница в цене инструмента * лотность * кол-во лотов
 				grossProfit := (resp.GetExecutedOrderPrice().ToFloat() - instrument.entryPrice) * float64(instrument.lot) * float64(instrument.quantity)
-				comission := resp.GetTotalOrderAmount().ToFloat() / 100 * 0.05
+				comission := resp.GetTotalOrderAmount().ToFloat() / 100 * e.comission
 				profit := grossProfit - comission - instrument.entryComission
 				sellOutProfit += profit
 				sellOutAmount += resp.GetTotalOrderAmount().ToFloat()
