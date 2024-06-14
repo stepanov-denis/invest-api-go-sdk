@@ -127,11 +127,11 @@ func main() {
 	orderBookConfig := bot.OrderBookStrategyConfig{
 		Instruments:          instruments,
 		Currency:             CURRENCY,
-		RequiredMoneyBalance: 200000,
+		RequiredMoneyBalance: 1000,
 		Depth:                20,
 		BuyRatio:             2,
 		SellRatio:            2,
-		MinProfit:            0.5,
+		MinProfit:            0.2,
 		StopLoss:             -10,
 		SellOut:              true,
 	}

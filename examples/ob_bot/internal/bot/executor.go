@@ -327,13 +327,13 @@ func (e *Executor) Buy(id string) (float64, error) {
 	if resp.GetExecutionReportStatus() == pb.OrderExecutionReportStatus_EXECUTION_REPORT_STATUS_FILL {
 		currentInstrument.inStock = true
 		currentInstrument.entryPrice = resp.GetExecutedOrderPrice().ToFloat()
-		currentInstrument.entryComission = resp.GetExecutedCommission().ToFloat()
+		currentInstrument.entryComission = resp.GetTotalOrderAmount().ToFloat() / 100 * 0.05
 	}
 	e.instruments[id] = currentInstrument
 	figi := resp.GetFigi()
 	price := resp.GetExecutedOrderPrice().ToFloat()
 	orderAmount := resp.GetTotalOrderAmount().ToFloat()
-	comission := resp.GetExecutedCommission().ToFloat()
+	comission := orderAmount / 100 * 0.05
 	e.client.Logger.Infof("Buy with %v, price = %.4f, order amount = %.4f, comission = %.4f", figi, price, orderAmount, comission)
 	return orderAmount, nil
 }
@@ -375,7 +375,7 @@ func (e *Executor) Sell(id string) (float64, float64, error) {
 	figi := resp.GetFigi()
 	price := resp.GetExecutedOrderPrice().ToFloat()
 	orderAmount := resp.GetTotalOrderAmount().ToFloat()
-	comission := resp.GetExecutedCommission().ToFloat()
+	comission := orderAmount / 100 * 0.05
 	profit := grossProfit - comission - currentInstrument.entryComission
 	e.client.Logger.Infof("Sell %v, price = %.4f, order amount = %.4f, comission = %.4f", figi, price, orderAmount, comission)
 	e.instruments[id] = currentInstrument
@@ -495,7 +495,8 @@ func (e *Executor) SellOut() (float64, float64, error) {
 				instrument.inStock = false
 				// разница в цене инструмента * лотность * кол-во лотов
 				grossProfit := (resp.GetExecutedOrderPrice().ToFloat() - instrument.entryPrice) * float64(instrument.lot) * float64(instrument.quantity)
-				profit := grossProfit - resp.GetExecutedCommission().ToFloat() - instrument.entryComission
+				comission := resp.GetTotalOrderAmount().ToFloat() / 100 * 0.05
+				profit := grossProfit - comission - instrument.entryComission
 				sellOutProfit += profit
 				sellOutAmount += resp.GetTotalOrderAmount().ToFloat()
 			}

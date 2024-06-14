@@ -23,7 +23,7 @@ var (
 	intervalConfig = bot.IntervalStrategyConfig{
 		PreferredPositionPrice:  200,
 		MaxPositionPrice:        600,
-		TopInstrumentsQuantity:  10,
+		TopInstrumentsQuantity:  1,
 		MinProfit:               0.3,
 		DaysToCalculateInterval: 3,
 		StopLossPercent:         1.8,
